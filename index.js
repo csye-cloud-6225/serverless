@@ -1,7 +1,8 @@
 const sgMail = require("@sendgrid/mail");
+const AWS = require("aws-sdk");
 
-// Configure SendGrid API
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+// Initialize the Secrets Manager client
+const secretsManager = new AWS.SecretsManager();
 
 exports.handler = async (event) => {
   console.log("Event received:", JSON.stringify(event)); // Log the incoming event
@@ -9,6 +10,20 @@ exports.handler = async (event) => {
   const baseURL = process.env.baseURL;
 
   try {
+    // Fetch the SendGrid API key from Secrets Manager
+    console.log("Fetching email service credentials...");
+    const secretValue = await secretsManager.getSecretValue({
+      SecretId: "sendgrid-api-key",
+    }).promise();
+    
+
+    const credentials = JSON.parse(secretValue.SecretString); // Parse the secret
+    const sendGridApiKey = credentials.SENDGRID_API_KEY; // Extract the API key
+    
+
+    // Configure SendGrid with the fetched API key
+    sgMail.setApiKey(sendGridApiKey);
+
     for (const record of event.Records) {
       console.log("Processing record:", record); // Log the current record being processed
 
@@ -18,9 +33,6 @@ exports.handler = async (event) => {
       const email = snsMessage.email;
       const verificationToken = snsMessage.verificationToken;
       const verificationLink = snsMessage.verificationLink;
-      // Construct the verification link
-      // const verificationLink = `http://${baseURL}/v1/user/self/verify?token=${verificationToken}`;
-      // console.log("Verification link:", verificationLink); // Log the verification link
 
       // Set up the email content
       const msg = {
@@ -48,7 +60,7 @@ exports.handler = async (event) => {
       body: "Verification email sent successfully",
     };
   } catch (error) {
-    console.error("Error processing SNS records:", error); // Log errors related to SNS processing
+    console.error("Error processing the request:", error); // Log errors related to Secrets Manager or SNS processing
     return {
       statusCode: 500,
       body: "An error occurred",
